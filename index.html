@@ -207,37 +207,88 @@
 
 
 <script src="Build_meltdown/UnityLoader.js"></script>
-<script> 
-    UnityLoader.compatibilityCheck = function (e, t, r) {
-        t();
-    };
-    var gameInstance = UnityLoader.instantiate("gameContainer", "Build_meltdown/geometrmeltdown.json", {onProgress: UnityProgress});
-    var alertShown = false;
+<script>
+const CHUNK_COUNT = 4;
+const CHUNK_BASE_NAME = "build/geometrmeltdown.data.unityweb.part"; 
+const JSON_URL = "build/geometrmeltdown.json";
 
-    function UnityProgress(gameInstance, progress) {
+async function loadAndMergeChunks() {
+    const progressFull = document.querySelector(".full");
+    document.querySelector(".progress").style.display = "block";
+    document.querySelector(".spinner").style.display = "none";
 
-        const loader = document.querySelector("#loader");
-        let percent_progress = progress * 100;
-
-        if (!gameInstance.progress) {
-            const progress = document.querySelector("#loader .progress");
-            progress.style.display = "block";
-            gameInstance.progress = progress.querySelector(".full");
-            loader.querySelector(".spinner").style.display = "none";
-        }
-
-        gameInstance.progress.style.width = `${percent_progress}%`;
+    try {
+        const jsonResponse = await fetch(JSON_URL);
+        const config = await jsonResponse.json();
         
-        if (percent_progress >= 75 && !alertShown) {
-            alert("Start spamming ESC until the game loads to bypass the redirection");
-            alertShown = true;
+        const chunkPromises = [];
+        for (let i = 1; i <= CHUNK_COUNT; i++) {
+            chunkPromises.push(fetch(`${CHUNK_BASE_NAME}${i}`).then(res => res.blob()));
         }
 
-        if (progress === 1 && !gameInstance.removeTimeout) {
-            gameInstance.removeTimeout = setTimeout(function () {
-                loader.style.display = "none";
-            }, 2000);
-        }
+        const chunkBlobs = await Promise.all(chunkPromises);
+        const finalBlob = new Blob(chunkBlobs, { type: "application/octet-stream" });
+        const blobUrl = URL.createObjectURL(finalBlob);
+
+        config.dataUrl = blobUrl;
+        const modifiedJsonString = JSON.stringify(config);
+
+        const realXHR = window.XMLHttpRequest;
+        window.XMLHttpRequest = function() {
+            const xhr = new realXHR();
+            const originalOpen = xhr.open;
+
+            xhr.open = function(method, url) {
+                if (url.indexOf("geo.json") > -1) {
+                    Object.defineProperty(xhr, 'responseText', { writable: true, value: modifiedJsonString });
+                    Object.defineProperty(xhr, 'status', { writable: true, value: 200 });
+                    Object.defineProperty(xhr, 'readyState', { writable: true, value: 4 });
+                    
+                    setTimeout(() => {
+                        if (xhr.onload) xhr.onload();
+                        if (xhr.onreadystatechange) xhr.onreadystatechange();
+                    }, 1);
+                    
+                    xhr.send = function() {}; 
+                }
+                return originalOpen.apply(xhr, arguments);
+            };
+            return xhr;
+        };
+
+        initUnity(JSON_URL);
+        
+    } catch (err) {
+        console.error("Initialization failed:", err);
     }
+}
+
+function initUnity(jsonPath) {
+    UnityLoader.compatibilityCheck = function (e, t, r) { t(); };
+    var gameInstance = UnityLoader.instantiate("gameContainer", jsonPath, {
+        onProgress: UnityProgress
+    });
+}
+
+var alertShown = false;
+function UnityProgress(gameInstance, progress) {
+    const loader = document.querySelector("#loader");
+    let percent_progress = 50 + (progress * 50);
+    if (!gameInstance.progress) {
+        gameInstance.progress = document.querySelector(".full");
+    }
+    gameInstance.progress.style.width = `${percent_progress}%`;
+
+    if (percent_progress >= 85 && !alertShown) {
+        alert("Start spamming ESC until the game loads to bypass the redirection");
+        alertShown = true;
+    }
+
+    if (progress === 1 && !gameInstance.removeTimeout) {
+        gameInstance.removeTimeout = setTimeout(() => { loader.style.display = "none"; }, 2000);
+    }
+}
+
+loadAndMergeChunks();
 </script>
 </html>
