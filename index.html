@@ -239,7 +239,7 @@ async function loadAndMergeChunks() {
             const originalOpen = xhr.open;
 
             xhr.open = function(method, url) {
-                if (url.indexOf("geo.json") > -1) {
+                if (url.indexOf("geometrmeltdown.json") > -1) {
                     Object.defineProperty(xhr, 'responseText', { writable: true, value: modifiedJsonString });
                     Object.defineProperty(xhr, 'status', { writable: true, value: 200 });
                     Object.defineProperty(xhr, 'readyState', { writable: true, value: 4 });
